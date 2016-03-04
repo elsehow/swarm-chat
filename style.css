@@ -1,7 +1,10 @@
 body {
-  background-color: rgb(17,11,13);
+  background-color: rgb(17,12,15);
   color: rgb(242,215,123);
 }
 
+.senderID {
+  color: rgb(152, 203, 148);
+}
 input {
 }

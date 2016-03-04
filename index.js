@@ -14,12 +14,17 @@ var swarm = connectToSwarm(config.signalhubs)
 // inside the special Through module
 function Through () {
 	var Kefir = require('kefir')
+	var Set = require('set')
 	function s (ev) {
 		return Kefir.fromEvents(dispatcher, ev)
   }
 
-	var peerListS       = s('peer-list')
+	var connectedPeerS  = s('connected-peer')
+	var disconnPeerS    = s('disconnected-peer')
   var myMessageS      = s('send-my-message')
+
+  // compute log of messages by mergin peer messages
+  // with modified versions of my own messages
 	var messageLogS     = s('peer-data')
 													//.filter(d => d.type==='message')
                           .merge(myMessageS.map(function (m) {
@@ -30,9 +35,16 @@ function Through () {
 													}))
                           .scan(l.append, [])
 
+  // compute peer list by managing a set of peer ids
+  var peerSet = new Set()
+  var peerListS = connectedPeerS.combine(disconnPeerS, 
+		(conn, diss) => {
+			peerSet.add(conn)
+			peerSet.remove(diss)
+			return peerSet.get()
+		})
+
   // side effects
-	// TODO show list of peers
-  peerListS.log('peerlist')
   // post my messages
   myMessageS.onValue(m => 
 		swarm.message({
@@ -40,8 +52,13 @@ function Through () {
       message: m,
 		}))
 
-  // return a stream of messag logs
-  return messageLogS
+  // return a stream of states
+  return messageLogS.combine(peerListS, (ms, ps) => {
+		return {
+			messages: ms,
+			peers: ps,
+		}
+	})
 }
 
 
@@ -60,13 +77,18 @@ function connectToSwarm (urls) {
 	// when a new peer connects,
   sw.on('peer', function (peer, id) {
 		// emit a peer-list event with the new list of peers
-    dispatcher.emit('peer-list', sw.peers)
+    dispatcher.emit('connected-peer', id)
     // set up new liseners for this peer
     peer.on('data', data => {
       var o = JSON.parse(data)
       o.peerID = id
 			dispatcher.emit('peer-data', o)
 		})
+  })
+
+  sw.on('disconnect', function (peer, id) {
+    console.log('there is a disconnect', id)
+    dispatcher.emit('disconnected-peer', id)
   })
   
   // method for sending messages to all peers
@@ -108,18 +130,31 @@ var main = require('main-loop')
 function render (state) {
 
   return h('div', [
-    h('div', state.map(messageDiv)),
+    h('div', listMessages()),
     h('input', { 
 // TODO this keyup could be app-wide
       onkeyup: handleInputKeyup, 
       autofocus: true,
-		})
+		}),
+		h('div.peerlist', listPeers())
   ])
 
-  function messageDiv (data) {
+	function listPeers () {
+    if (state.peers)
+			return state.peers.map(id => h('i', `${id} `))
+		return h('i', 'connecting to peers...')
+	}
+
+  function listMessages () {
+    if (state.messages)
+			return state.messages.map(messageDiv)
+		return []
+  }
+
+  function messageDiv (m) {
 		return h('div.message', [
-		  h('span.senderID', `${data.peerID}: `),
-		  h('span.message', data.message),
+		  h('span.senderID', `${m.peerID}: `),
+		  h('span.message', m.message),
 		])
   }
 
@@ -146,5 +181,6 @@ var stateS = Through()
 var loop = main([], render, require('virtual-dom'))
 document.querySelector('#app').appendChild(loop.target)
 stateS.onValue(loop.update)
+stateS.log('STATE!')
 
 
