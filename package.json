@@ -14,7 +14,11 @@
     "watchify": "^3.7.0"
   },
   "dependencies": {
+    "kefir": "^3.2.1",
+    "lodash": "^4.6.1",
     "main-loop": "^3.2.0",
-    "virtual-dom": "^2.1.1"
+    "signalhub": "^4.3.2",
+    "virtual-dom": "^2.1.1",
+    "webrtc-swarm": "^2.4.0"
   }
 }
